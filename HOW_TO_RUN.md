@@ -8,20 +8,28 @@ Ensure you have the following installed on your system:
 - **pip** (Python package installer)
 
 ## 2. Installation
-Open your terminal (Command Prompt, PowerShell, or bash), navigate to the project folder (`C:\Users\Administrator\Desktop\حلا الربه`), and install the required dependencies:
+Open your terminal (Command Prompt, PowerShell, or bash), navigate to the project folder, and install the required dependencies:
 
 ```cmd
 pip install -r requirements.txt
 ```
-*(This will install `torch`, `numpy`, `pandas`, `huggingface_hub`, and `scikit-learn`)*
+*(This will install `torch`, `numpy`, `pandas`, `huggingface_hub`, `scikit-learn`, and `kaggle`)*
 
 ---
 
 ## 3. Usage Guide
 
-The CLI application is operated entirely through the `main.py` file. It requires exactly one of the two following input arguments:
+The CLI application is operated through the `main.py` file. It supports three input methods:
 
-### Option A: Manual Entry (`--manual`)
+### Option A: MIT-BIH Dataset Row (`--row`)
+Use this to test a specific heartbeat from the MIT-BIH dataset. The script will automatically download and extract the dataset from Kaggle if needed.
+
+**Command:**
+```cmd
+python main.py --row 0
+```
+
+### Option B: Manual Entry (`--manual`)
 If you want to quickly test an array of ECG readings, you can supply them directly as a comma-separated string in quotes.
 
 **Command:**
@@ -29,7 +37,7 @@ If you want to quickly test an array of ECG readings, you can supply them direct
 python main.py --manual "0.12,0.18,0.25,0.10,-0.05,0.02"
 ```
 
-### Option B: CSV File Entry (`--csv`)
+### Option C: CSV File Entry (`--csv`)
 If you have a dataset saved in a CSV format (a single row or column of signal values), you can pass the file path.
 
 **Command:**
@@ -41,9 +49,9 @@ python main.py --csv sample_ecg.csv
 
 ## 4. Expected Output
 
-On your first run, the script will automatically download the necessary model weights and configuration files from Hugging Face. Subsequent runs will use the cached files and be much faster.
+On your first run, the script will automatically download the necessary model weights and configuration files from Hugging Face. If using `--row`, it will also set up the Kaggle dataset.
 
-The terminal will print the inference sequence and display the final diagnosis. 
+The terminal will print the inference sequence and display the final diagnosis.
 
 **Example Output (Normal):**
 ```text
@@ -51,11 +59,12 @@ Downloading/Loading model files from Hugging Face...
 
 Running inference...
 
---- Results ---
-Predicted class  : N
-Confidence score : 0.9921
-
-Final Status: Normal ECG
+========================================
+        CLASSIFICATION RESULTS
+========================================
+Predicted Class  : N
+Predicted Status : Normal ECG
+========================================
 ```
 
 **Example Output (Abnormal):**
@@ -64,14 +73,15 @@ Downloading/Loading model files from Hugging Face...
 
 Running inference...
 
---- Results ---
-Predicted class  : V
-Confidence score : 0.9654
-
-Final Status: Abnormal ECG
-Detected class: V
+========================================
+        CLASSIFICATION RESULTS
+========================================
+Predicted Class  : V
+Predicted Status : Abnormal ECG
+========================================
 ```
 
 ## Troubleshooting
-- **ModuleNotFoundError**: Make sure you ran `pip install -r requirements.txt` and are using the correct Python environment.
-- **Direct model loading failed / Error Loading Model**: This occurs if the fallback wrapper cannot perfectly map the Hugging Face weights. Ensure `model_wrapper.py` is in the same directory as `main.py`.
+- **Kaggle API Credentials**: If using `--row`, ensure your `kaggle.json` is placed in `~/.kaggle/`.
+- **ModuleNotFoundError**: Make sure you ran `pip install -r requirements.txt`.
+- **Direct model loading failed**: This is normal; the script uses a fallback wrapper to load the weights correctly.
