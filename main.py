@@ -154,11 +154,54 @@ def load_model(model_path, config_path):
 
 def main():
     parser = argparse.ArgumentParser(description="ECG Arrhythmia Classification CLI")
-    parser.add_argument("--row", type=int, required=True, help="Row index from mitbih_test.csv to process")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--row", type=int, help="Row index from mitbih_test.csv to process")
+    group.add_argument("--manual", type=str, help="Comma-separated ECG signal values")
+    group.add_argument("--csv", type=str, help="Path to CSV file containing ECG signal values")
+    
     args = parser.parse_args()
 
-    # 1. Download Dataset
-    download_and_extract_dataset()
+    # 1. Handle Input Source
+    true_label_numeric = None
+    true_class_char = "N/A"
+    true_status = "Unknown"
+    
+    if args.row is not None:
+        # Download Dataset if needed
+        download_and_extract_dataset()
+        try:
+            df = pd.read_csv(TEST_FILE, header=None)
+            if args.row >= len(df):
+                print(f"[Error] Row index {args.row} is out of bounds (Max: {len(df)-1}).")
+                sys.exit(1)
+            
+            row_data = df.iloc[args.row].values
+            ecg_signal = row_data[:187]
+            true_label_numeric = int(row_data[187])
+            true_class_char, true_status = LABEL_STATUS_MAP.get(true_label_numeric, ("Unknown", "Unknown"))
+        except Exception as e:
+            print(f"[Error] Failed to read row {args.row}: {e}")
+            sys.exit(1)
+            
+    elif args.manual:
+        try:
+            ecg_signal = [float(x.strip()) for x in args.manual.split(",")]
+        except ValueError:
+            print("Error: --manual input must be comma-separated numbers.")
+            sys.exit(1)
+            
+    elif args.csv:
+        if not os.path.isfile(args.csv):
+            print(f"Error: CSV file '{args.csv}' not found.")
+            sys.exit(1)
+        try:
+            df = pd.read_csv(args.csv, header=None)
+            ecg_signal = df.values.flatten().tolist()
+            if not ecg_signal:
+                raise ValueError("CSV is empty.")
+        except Exception as e:
+            print(f"Error reading CSV format: {e}")
+            sys.exit(1)
 
     # 2. Download Model
     config_path, encoder_path, model_path = download_model_files()
@@ -166,25 +209,11 @@ def main():
         config = json.load(f)
     window_size = config.get("window_size", 187)
 
-    # 3. Load Row from CSV
-    try:
-        df = pd.read_csv(TEST_FILE, header=None)
-        if args.row >= len(df):
-            print(f"[Error] Row index {args.row} is out of bounds (Max: {len(df)-1}).")
-            sys.exit(1)
-        
-        row_data = df.iloc[args.row].values
-        ecg_signal = row_data[:187]
-        true_label_numeric = int(row_data[187])
-    except Exception as e:
-        print(f"[Error] Failed to read row {args.row}: {e}")
-        sys.exit(1)
-
-    # 4. Preprocess
+    # 3. Preprocess
     print("\nPreprocessing signal...")
     input_tensor = preprocess_ecg(ecg_signal, window_size)
 
-    # 5. Load Model & Label Encoder
+    # 4. Load Model & Label Encoder
     model = load_model(model_path, config_path)
     try:
         with open(encoder_path, "rb") as f:
@@ -192,7 +221,7 @@ def main():
     except:
         label_encoder = None
 
-    # 6. Inference
+    # 5. Inference
     print("Running inference...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_tensor = input_tensor.to(device)
@@ -202,7 +231,7 @@ def main():
         probs = F.softmax(outputs, dim=1)
         confidence, pred_idx = torch.max(probs, 1)
 
-    # 7. Map Results
+    # 6. Map Results
     conf_score = confidence.item()
     
     # Predicted class name
@@ -217,29 +246,28 @@ def main():
     # Status mapping
     pred_status = "Normal ECG" if pred_class == "N" else "Abnormal ECG"
     
-    # True status mapping
-    true_class_char, true_status = LABEL_STATUS_MAP.get(true_label_numeric, ("Unknown", "Unknown"))
-    
     # Correct/Wrong
-    # The model was trained on N, L, R, V, A. 
-    # MIT-BIH 0=Normal, 1=S, 2=V, 3=F, 4=Q.
-    # We judge correctness based on Status (Normal vs Abnormal)
-    is_correct = "Correct" if pred_status == true_status else "Wrong"
+    is_correct = "N/A"
+    if true_status != "Unknown":
+        is_correct = "Correct" if pred_status == true_status else "Wrong"
 
-    # 8. Print Output
+    # 7. Print Output
     print("\n" + "="*40)
     print("        CLASSIFICATION RESULTS")
     print("="*40)
     print(f"Predicted Class  : {pred_class}")
-
     
     if conf_score < LOW_CONF_THRESHOLD:
         print("Low confidence: result is not reliable")
         
-    print(f"True Label       : {true_label_numeric} ({true_class_char})")
+    if true_label_numeric is not None:
+        print(f"True Label       : {true_label_numeric} ({true_class_char})")
+        print(f"True Status      : {true_status}")
+        
     print(f"Predicted Status : {pred_status}")
-    print(f"True Status      : {true_status}")
-    print(f"Result           : {is_correct}")
+    
+    if true_label_numeric is not None:
+        print(f"Result           : {is_correct}")
     print("="*40)
 
 if __name__ == "__main__":
